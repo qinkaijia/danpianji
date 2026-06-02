@@ -28,7 +28,8 @@ typedef enum {
     STATE_DASHBOARD,
     STATE_MENU,
     STATE_EDIT,
-    STATE_HISTORY
+    STATE_HISTORY,
+    STATE_CONFIRM
 } AppState;
 
 static LocalSensor sensor = {0};
@@ -67,9 +68,10 @@ static const char *menu_items[] = {
     "Rec Interval",
     "Fan Manual",
     "History",
+    "Clear History",
     "Back"
 };
-#define MENU_COUNT 7
+#define MENU_COUNT 8
 
 static void ReadSensors(void);
 static void UpdateControl(void);
@@ -79,6 +81,7 @@ static void RenderDashboard(void);
 static void RenderMenu(void);
 static void RenderEdit(void);
 static void RenderHistory(void);
+static void RenderConfirm(void);
 static void HandleInput(void);
 static void SaveRecord(void);
 static void UpdateSensorGlobal(void);
@@ -111,6 +114,7 @@ void App_Run(void)
                 case STATE_MENU:      RenderMenu();      break;
                 case STATE_EDIT:      RenderEdit();      break;
                 case STATE_HISTORY:   RenderHistory();   break;
+                case STATE_CONFIRM:   RenderConfirm();   break;
             }
         }
     }
@@ -335,6 +339,14 @@ static void RenderHistory(void)
     OLED_Refresh();
 }
 
+static void RenderConfirm(void)
+{
+    OLED_Clear();
+    OLED_ShowString(0, 0, "Clear History?", 1);
+    OLED_ShowString(0, 24, "SW=Yes KEY=No", 1);
+    OLED_Refresh();
+}
+
 static void HandleInput(void)
 {
     int16_t delta = 0;
@@ -392,6 +404,8 @@ static void HandleInput(void)
                 } else if (menu_index == 5) {
                     app_state = STATE_HISTORY;
                     hist_view_idx = 0;
+                } else if (menu_index == 6) {
+                    app_state = STATE_CONFIRM;
                 } else if (menu_index == 4) {
                     app_state = STATE_EDIT;
                     edit_value = fan_manual_speed;
@@ -462,6 +476,16 @@ static void HandleInput(void)
             if (delta > 0 && hist_view_idx + 1 < History_GetCount()) hist_view_idx++;
             if (delta < 0 && hist_view_idx > 0) hist_view_idx--;
             if (sw || key) {
+                app_state = STATE_MENU;
+            }
+            break;
+
+        case STATE_CONFIRM:
+            if (sw) {
+                History_Clear();
+                app_state = STATE_MENU;
+            }
+            if (key) {
                 app_state = STATE_MENU;
             }
             break;

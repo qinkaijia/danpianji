@@ -8,9 +8,38 @@
 static HistoryRecord history_buffer[HISTORY_SIZE];
 static uint8_t history_count = 0;
 static uint8_t history_head = 0;
+static uint16_t flash_record_count = 0;
+
+static uint8_t IsEmptyBuf(const uint8_t *buf, uint8_t len)
+{
+    for (uint8_t i = 0; i < len; i++) {
+        if (buf[i] != 0xFF) return 0;
+    }
+    return 1;
+}
 
 void Storage_Init(void)
 {
+    uint8_t buf[8];
+    flash_record_count = 0;
+    for (uint32_t addr = HISTORY_ADDR + 4;
+         addr < HISTORY_ADDR + W25Q64_SECTOR_SIZE;
+         addr += 8) {
+        W25Q64_Read(addr, buf, 8);
+        if (IsEmptyBuf(buf, 8)) break;
+        flash_record_count++;
+    }
+
+    uint16_t load_count =
+        (flash_record_count < HISTORY_SIZE) ? flash_record_count : HISTORY_SIZE;
+    uint32_t start_addr =
+        HISTORY_ADDR + 4 + (flash_record_count - load_count) * 8;
+
+    history_count = load_count;
+    history_head = load_count % HISTORY_SIZE;
+    for (uint16_t i = 0; i < load_count; i++) {
+        W25Q64_Read(start_addr + i * 8, (uint8_t *)&history_buffer[i], 8);
+    }
 }
 
 void Storage_Load(Storage_Params *params)
@@ -28,13 +57,17 @@ void Storage_Load(Storage_Params *params)
         Storage_Save(params);
     }
 
-    if (params->temp_threshold < TEMP_THRESHOLD_MIN || params->temp_threshold > TEMP_THRESHOLD_MAX)
+    if (params->temp_threshold < TEMP_THRESHOLD_MIN ||
+        params->temp_threshold > TEMP_THRESHOLD_MAX)
         params->temp_threshold = TEMP_THRESHOLD_DEFAULT;
-    if (params->hum_threshold < HUM_THRESHOLD_MIN || params->hum_threshold > HUM_THRESHOLD_MAX)
+    if (params->hum_threshold < HUM_THRESHOLD_MIN ||
+        params->hum_threshold > HUM_THRESHOLD_MAX)
         params->hum_threshold = HUM_THRESHOLD_DEFAULT;
-    if (params->dist_threshold < DIST_THRESHOLD_MIN || params->dist_threshold > DIST_THRESHOLD_MAX)
+    if (params->dist_threshold < DIST_THRESHOLD_MIN ||
+        params->dist_threshold > DIST_THRESHOLD_MAX)
         params->dist_threshold = DIST_THRESHOLD_DEFAULT;
-    if (params->record_interval < INTERVAL_MIN || params->record_interval > INTERVAL_MAX)
+    if (params->record_interval < INTERVAL_MIN ||
+        params->record_interval > INTERVAL_MAX)
         params->record_interval = INTERVAL_DEFAULT;
 }
 
@@ -53,6 +86,15 @@ void History_Add(const HistoryRecord *rec)
     if (history_count < HISTORY_SIZE) {
         history_count++;
     }
+
+    uint32_t addr = HISTORY_ADDR + 4 + (uint32_t)flash_record_count * 8;
+    if (addr + 8 > HISTORY_ADDR + W25Q64_SECTOR_SIZE) {
+        W25Q64_EraseSector(HISTORY_ADDR);
+        flash_record_count = 0;
+        addr = HISTORY_ADDR + 4;
+    }
+    W25Q64_Write(addr, (uint8_t *)rec, 8);
+    flash_record_count++;
 }
 
 uint8_t History_GetCount(void)
@@ -74,6 +116,8 @@ void History_GetRecord(uint8_t idx, HistoryRecord *rec)
 
 void History_Clear(void)
 {
+    W25Q64_EraseSector(HISTORY_ADDR);
+    flash_record_count = 0;
     history_count = 0;
     history_head = 0;
 }
