@@ -56,6 +56,9 @@ static uint8_t alarm_dist = 0;
 static uint8_t alarm_hum = 0;
 static uint8_t alarm_temp = 0;
 static uint32_t pir_beep_tick = 0;
+static uint32_t tick_input = 0;
+static int8_t enc_last_dir = 0;
+static uint8_t enc_same_cnt = 0;
 
 static const char *menu_items[] = {
     "Temp Threshold",
@@ -334,9 +337,29 @@ static void RenderHistory(void)
 
 static void HandleInput(void)
 {
-    int16_t delta = Encoder_GetDelta();
+    int16_t delta = 0;
     uint8_t sw = Encoder_IsPressed();
     uint8_t key = Key_IsPressed();
+
+    if (HAL_GetTick() - tick_input >= 20) {
+        tick_input = HAL_GetTick();
+        int16_t raw = Encoder_GetDelta();
+
+        int8_t dir = 0;
+        if (raw >= 3) dir = 1;
+        else if (raw <= -3) dir = -1;
+
+        if (dir == enc_last_dir && dir != 0) {
+            enc_same_cnt++;
+            if (enc_same_cnt >= 2) {
+                delta = dir;
+                enc_same_cnt = 0;
+            }
+        } else {
+            enc_same_cnt = (dir != 0) ? 1 : 0;
+        }
+        enc_last_dir = dir;
+    }
 
     if (delta != 0 || sw || key) {
         tick_activity = HAL_GetTick();
@@ -351,6 +374,12 @@ static void HandleInput(void)
             if (sw) {
                 app_state = STATE_MENU;
                 menu_index = 0;
+            }
+            if (key && fan_manual) {
+                fan_manual = 0;
+                fan_manual_speed = 0;
+                TB6612_Stop();
+                fan_speed = 0;
             }
             break;
 
